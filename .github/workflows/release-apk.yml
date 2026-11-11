@@ -1,0 +1,143 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yar-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      filename: ${{ steps.apk.outputs.filename }}
+      signed: ${{ steps.signing.outputs.signed }}
+      version: ${{ steps.version.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Read and validate version
+        id: version
+        shell: bash
+        run: |
+          version=$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+)"$/\1/p' app/build.gradle.kts)
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Set versionName in app/build.gradle.kts to a version such as 1.0.0."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::The tag must match versionName (v$version)."
+            exit 1
+          fi
+          printf 'name=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Configure signing
+        id: signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.YAR_SIGNING_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.YAR_SIGNING_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.YAR_SIGNING_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.YAR_SIGNING_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$KEYSTORE_BASE64$STORE_PASSWORD$KEY_ALIAS$KEY_PASSWORD" ]]; then
+            echo 'signed=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::Release signing secrets are absent. An unsigned APK will be available in Actions artifacts.'
+            exit 0
+          fi
+          if [[ -z "$KEYSTORE_BASE64" || -z "$STORE_PASSWORD" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" ]]; then
+            echo '::error::Configure all four YAR_SIGNING_* repository secrets.'
+            exit 1
+          fi
+          umask 077
+          keystore="$RUNNER_TEMP/yar-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          printf 'YAR_SIGNING_STORE_FILE=%s\n' "$keystore" >> "$GITHUB_ENV"
+          echo 'signed=true' >> "$GITHUB_OUTPUT"
+      - name: Test, lint, and build the release APK
+        env:
+          YAR_SIGNING_STORE_PASSWORD: ${{ secrets.YAR_SIGNING_STORE_PASSWORD }}
+          YAR_SIGNING_KEY_ALIAS: ${{ secrets.YAR_SIGNING_KEY_ALIAS }}
+          YAR_SIGNING_KEY_PASSWORD: ${{ secrets.YAR_SIGNING_KEY_PASSWORD }}
+        run: ./gradlew :feature:hokm:testDebugUnitTest :app:lintDebug :app:assembleRelease
+      - name: Verify and stage APK
+        id: apk
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.version.outputs.name }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          build_tools="$ANDROID_HOME/build-tools/35.0.0"
+          if [[ "$SIGNED" == true ]]; then
+            source=app/build/outputs/apk/release/app-release.apk
+            filename="Yar-$APP_VERSION.apk"
+            "$build_tools/apksigner" verify --verbose "$source"
+          else
+            source=app/build/outputs/apk/release/app-release-unsigned.apk
+            filename="Yar-$APP_VERSION-unsigned.apk"
+          fi
+          "$build_tools/zipalign" -c -P 16 4 "$source"
+          mkdir -p dist
+          cp -- "$source" "dist/$filename"
+          (cd dist && sha256sum "$filename" > "$filename.sha256")
+          printf 'filename=%s\n' "$filename" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.filename }}
+          path: dist/*
+          if-no-files-found: error
+      - name: Remove temporary keystore
+        if: always()
+        run: rm -f -- "$RUNNER_TEMP/yar-release.jks"
+
+  publish:
+    if: github.event_name == 'push' && github.ref_type == 'tag' && needs.build.outputs.signed == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.filename }}
+          path: dist
+      - name: Publish to GitHub Releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_NAME: ${{ needs.build.outputs.filename }}
+          APP_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          cd dist
+          sha256sum -c "$APK_NAME.sha256"
+          tag="$GITHUB_REF_NAME"
+          if release=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,assets 2>/dev/null); then
+            if jq -e '.isDraft' <<< "$release" > /dev/null; then
+              gh release upload "$tag" "$APK_NAME" "$APK_NAME.sha256" --repo "$GITHUB_REPOSITORY" --clobber
+              gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false
+            else
+              jq -e --arg apk "$APK_NAME" --arg checksum "$APK_NAME.sha256" \
+                '[.assets[].name] | (index($apk) != null and index($checksum) != null)' <<< "$release" > /dev/null
+              echo "Release $tag already has both assets."
+            fi
+          else
+            gh release create "$tag" "$APK_NAME" "$APK_NAME.sha256" \
+              --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "Yar $APP_VERSION"
+          fi

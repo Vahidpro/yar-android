@@ -3,7 +3,6 @@
     <style name="Theme.Yar" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/yar_window</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
         <item name="android:colorAccent">#285843</item>
     </style>
     <color name="yar_window">#F6F5EE</color>

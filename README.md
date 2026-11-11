@@ -64,6 +64,28 @@ The production application ID is `io.github.vahidpro.yar`. The test APK uses `io
 
 The release APK and AAB appear under `app/build/outputs`. The same tasks can produce unsigned artifacts when the signing variables are absent. Keep the production key for future updates and increment `versionCode` with each store release. See [Android's app signing guide](https://developer.android.com/studio/publish/app-signing).
 
+## Automated GitHub releases
+
+The **Release APK** workflow builds an optimized APK and a SHA-256 checksum. Run it manually from **Actions** to download the build artifact. Pushing a version tag publishes the signed APK and checksum to **GitHub Releases** when signing is configured.
+
+Add these repository secrets under **Settings → Secrets and variables → Actions**. Use the same release key for every version.
+
+| Repository secret | Value |
+| --- | --- |
+| `YAR_SIGNING_KEYSTORE_BASE64` | Base64-encoded release keystore |
+| `YAR_SIGNING_STORE_PASSWORD` | Keystore password |
+| `YAR_SIGNING_KEY_ALIAS` | Release key alias |
+| `YAR_SIGNING_KEY_PASSWORD` | Release key password |
+
+Set `versionName` in `app/build.gradle.kts`, increment `versionCode` for each update, and push a matching tag.
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+With all signing secrets absent, the workflow saves an unsigned APK under **Actions → Artifacts**. Add the signing secrets and rerun the tagged workflow to publish an installable release.
+
 ## Data and licensing
 
 Yar stores team names, player names, scores, and appearance preferences on the device. It uses no account, app-level cloud sync, analytics, or network permission.

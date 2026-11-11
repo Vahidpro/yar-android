@@ -2,6 +2,8 @@ name: Android
 
 on:
   push:
+    branches:
+      - '**'
   pull_request:
 
 permissions:
