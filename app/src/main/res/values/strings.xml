@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">یار</string>
+    <string name="app_tagline">ابزار بازی‌های دورهمی</string>
+    <string name="tab_tools">ابزارها</string>
+    <string name="tab_games">بازی‌ها</string>
+    <string name="tab_settings">تنظیمات</string>
+    <string name="hokm_category">حکم</string>
+    <string name="hokm_hero_title">امتیازشمار</string>
+    <string name="hokm_hero_body">عددها را پیش از هر دست ثبت کن و جمع امتیازها را در لحظه ببین.</string>
+    <string name="hokm_start">شروع بازی</string>
+    <string name="hokm_resume">ادامهٔ بازی</string>
+    <string name="recent_games">بازی اخیر</string>
+    <string name="all_games">همهٔ بازی‌ها</string>
+    <string name="rules_link_title">راهنمای امتیازدهی</string>
+    <string name="rules_link_body">از اعلام عدد تا امتیاز نهایی هر دست</string>
+    <string name="saved_games_heading">بازی‌های ذخیره‌شده</string>
+    <string name="history_empty_title">هنوز بازی‌ای ذخیره نشده</string>
+    <string name="history_empty_body">بعد از ثبت تیم‌ها یا شروع اولین دست، بازی‌ات اینجا دیده می‌شود.</string>
+    <string name="new_game">بازی جدید</string>
+    <string name="history_hokm">حکم</string>
+    <string name="history_date_rounds">%1$s · %2$s دست</string>
+    <string name="active_game">بازی جاری</string>
+    <string name="games_load_error">بازی‌های ذخیره‌شده بارگذاری نشدند.</string>
+    <string name="try_again">تلاش دوباره</string>
+    <string name="appearance_heading">ظاهر برنامه</string>
+    <string name="theme_system">همراه گوشی</string>
+    <string name="theme_light">روشن</string>
+    <string name="theme_dark">تاریک</string>
+    <string name="theme_save_error">تغییر ظاهر ذخیره نشد.</string>
+    <string name="about_heading">دربارهٔ یار</string>
+    <string name="app_version">یار، نسخهٔ %1$s</string>
+    <string name="local_storage">تیم‌ها، دست‌ها و امتیازها روی همین گوشی ذخیره می‌شوند. برای بازی به اینترنت نیاز نداری.</string>
+</resources>
