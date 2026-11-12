@@ -32,9 +32,10 @@ import io.github.vahidpro.yar.design.YarPrimaryButton
 import io.github.vahidpro.yar.design.YarScreenBar
 import io.github.vahidpro.yar.design.YarSymbol
 import io.github.vahidpro.yar.design.YarTile
-import io.github.vahidpro.yar.design.persian
-import io.github.vahidpro.yar.design.persianDigits
-import io.github.vahidpro.yar.hokm.domain.GameSettings
+import io.github.vahidpro.yar.design.LocalYarLanguage
+import io.github.vahidpro.yar.design.YarLanguage
+import io.github.vahidpro.yar.design.digits
+import io.github.vahidpro.yar.design.localized
 import io.github.vahidpro.yar.hokm.domain.HokmGame
 import io.github.vahidpro.yar.hokm.ui.HokmGamesState
 import io.github.vahidpro.yar.hokm.ui.displayName
@@ -66,7 +67,7 @@ fun HistoryScreen(
                 YarPrimaryButton(stringResource(R.string.try_again), onRetry)
             }
             is HokmGamesState.Ready -> {
-                val visible = state.games.filter { it.hasProgress || it.settings != GameSettings() }
+                val visible = state.games.filter { it.hasProgress || it.isFinished || !it.settings.isDefault }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 5.dp, bottom = 22.dp),
@@ -101,9 +102,11 @@ fun HistoryScreen(
 @Composable
 internal fun GameHistoryCard(game: HokmGame, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    val date = remember(game.createdAt) {
-        DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.forLanguageTag("fa-IR-u-ca-persian-nu-arabext"))
-            .format(Date(game.createdAt)).persianDigits()
+    val language = LocalYarLanguage.current
+    val date = remember(game.createdAt, language) {
+        val locale = Locale.forLanguageTag(if (language.rtl) "fa-IR-u-ca-persian" else language.tag)
+        val style = if (language == YarLanguage.Balochi) DateFormat.SHORT else DateFormat.MEDIUM
+        language.digits(DateFormat.getDateInstance(style, locale).format(Date(game.createdAt)))
     }
     Surface(
         onClick = onClick,
@@ -120,19 +123,19 @@ internal fun GameHistoryCard(game: HokmGame, onClick: () -> Unit) {
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
-                        stringResource(R.string.history_date_rounds, date, game.rounds.size.persian()),
+                        stringResource(R.string.history_date_rounds, date, game.rounds.size.localized()),
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.onSurfaceVariant,
                     )
                 }
-                if (game.isActive) {
+                if (game.isActive || game.isFinished) {
                     Surface(
                         color = colors.primaryContainer,
                         contentColor = colors.onPrimaryContainer,
                         shape = RoundedCornerShape(20.dp),
                     ) {
                         Text(
-                            stringResource(R.string.active_game),
+                            stringResource(if (game.isFinished) R.string.finished_game else R.string.active_game),
                             Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                             style = MaterialTheme.typography.labelSmall,
                         )
@@ -143,12 +146,12 @@ internal fun GameHistoryCard(game: HokmGame, onClick: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HistoryScore(
                     game.settings.firstTeam.displayName(first = true),
-                    game.firstTotal,
+                    game.firstTotal.takeIf { game.scoresVisible },
                     Modifier.weight(1f),
                 )
                 HistoryScore(
                     game.settings.secondTeam.displayName(first = false),
-                    game.secondTotal,
+                    game.secondTotal.takeIf { game.scoresVisible },
                     Modifier.weight(1f),
                 )
             }
@@ -157,7 +160,7 @@ internal fun GameHistoryCard(game: HokmGame, onClick: () -> Unit) {
 }
 
 @Composable
-private fun HistoryScore(name: String, score: Long, modifier: Modifier = Modifier) {
+private fun HistoryScore(name: String, score: Long?, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(11.dp),
@@ -172,7 +175,7 @@ private fun HistoryScore(name: String, score: Long, modifier: Modifier = Modifie
                 name, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
                 overflow = TextOverflow.Ellipsis, maxLines = 1,
             )
-            Text(score.persian(), style = MaterialTheme.typography.titleSmall)
+            if (score != null) Text(score.localized(), style = MaterialTheme.typography.titleSmall)
         }
     }
 }

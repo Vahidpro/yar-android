@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -46,7 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.github.vahidpro.yar.design.YarColors
+import io.github.vahidpro.yar.design.LocalYarHero
 import io.github.vahidpro.yar.design.YarEmptyState
 import io.github.vahidpro.yar.design.YarIcon
 import io.github.vahidpro.yar.design.YarPanel
@@ -55,14 +56,17 @@ import io.github.vahidpro.yar.design.YarScreenBar
 import io.github.vahidpro.yar.design.YarSectionTitle
 import io.github.vahidpro.yar.design.YarSymbol
 import io.github.vahidpro.yar.design.YarTile
-import io.github.vahidpro.yar.design.persian
+import io.github.vahidpro.yar.design.localized
 import io.github.vahidpro.yar.hokm.R
 import io.github.vahidpro.yar.hokm.domain.GameSettings
 import io.github.vahidpro.yar.hokm.domain.HokmGame
 import io.github.vahidpro.yar.hokm.domain.HokmRound
+import io.github.vahidpro.yar.hokm.domain.HokmRules
+import io.github.vahidpro.yar.hokm.domain.TeamNumbers
+import io.github.vahidpro.yar.hokm.domain.TeamSide
 
 private enum class GameOverlay {
-    Announce, Result, FixAnnouncements, EditRound, EditTeams, NewGame, Reset, DeleteRound, Rules,
+    Announce, Result, FixAnnouncements, EditRound, Settings, NewGame, Reset, DeleteRound, Rules, Stats, Finish,
 }
 
 @Composable
@@ -131,8 +135,9 @@ private fun GameContent(
     var selectedRoundId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     val selectedRound = game.rounds.firstOrNull { it.id == selectedRoundId }
-    val nextRound = game.rounds.size + 1
+    val nextRound = game.nextRoundNumber
     val draft = game.draft
+    val forced = game.settings.forcedRounds.announcementsFor(nextRound).takeIf { draft == null }
     val firstName = game.settings.firstTeam.displayName(first = true)
     val secondName = game.settings.secondTeam.displayName(first = false)
     val trickCount = game.settings.trickCount
@@ -157,9 +162,9 @@ private fun GameContent(
 
     Column(Modifier.fillMaxSize()) {
         YarScreenBar(stringResource(R.string.hokm_title), onBack) {
-            if (game.isActive) {
-                IconButton(onClick = { show(GameOverlay.EditTeams) }, enabled = !saving) {
-                    YarIcon(YarSymbol.Users, stringResource(R.string.hokm_edit_teams))
+            if (game.isEditable) {
+                IconButton(onClick = { show(GameOverlay.Settings) }, enabled = !saving) {
+                    YarIcon(YarSymbol.Settings, stringResource(R.string.hokm_game_settings))
                 }
             }
             Box {
@@ -173,6 +178,8 @@ private fun GameContent(
                             leadingIcon = { YarIcon(YarSymbol.Plus) },
                             onClick = { show(GameOverlay.NewGame) },
                         )
+                    }
+                    if (game.isEditable) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.hokm_reset_scores)) },
                             leadingIcon = { YarIcon(YarSymbol.Reset) },
@@ -193,16 +200,29 @@ private fun GameContent(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 22.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item(key = "score") { ScoreBoard(game, firstName, secondName) }
+            item(key = "score") {
+                ScoreBoard(game, firstName, secondName, !saving) {
+                    viewModel.setScoresVisible(game.id, !game.settings.showScores)
+                }
+            }
             item(key = "next") {
-                if (game.isActive) {
+                if (game.isFinished) {
+                    FinishedGameActions(game, firstName, secondName, { show(GameOverlay.Stats) })
+                } else if (game.isEditable) {
                     RoundActionCard(
                         round = nextRound,
                         game = game,
                         firstName = firstName,
                         secondName = secondName,
+                        forced = forced,
                         enabled = !saving,
-                        onOpen = { show(if (draft == null) GameOverlay.Announce else GameOverlay.Result) },
+                        onOpen = {
+                            when {
+                                draft != null -> show(GameOverlay.Result)
+                                forced != null -> viewModel.startRound(game.id, forced, ::close)
+                                else -> show(GameOverlay.Announce)
+                            }
+                        },
                         onFix = { show(GameOverlay.FixAnnouncements) },
                     )
                 } else {
@@ -213,6 +233,28 @@ private fun GameContent(
                         symbol = YarSymbol.Next,
                         enabled = !saving,
                     )
+                }
+            }
+            if (!game.isFinished) {
+                item(key = "actions") {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ScoreAction(
+                            text = stringResource(R.string.hokm_stats),
+                            symbol = YarSymbol.Chart,
+                            onClick = { show(GameOverlay.Stats) },
+                            enabled = game.rounds.isNotEmpty() && !saving,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (game.isEditable) {
+                            ScoreAction(
+                                text = stringResource(R.string.hokm_finish_game),
+                                symbol = YarSymbol.Trophy,
+                                onClick = { show(GameOverlay.Finish) },
+                                enabled = !saving,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
                 }
             }
             if (saveFailed && overlay == null) {
@@ -226,7 +268,7 @@ private fun GameContent(
                 ) {
                     YarSectionTitle(stringResource(R.string.hokm_rounds), Modifier.weight(1f))
                     Text(
-                        stringResource(R.string.hokm_round_count, game.rounds.size.persian()),
+                        stringResource(R.string.hokm_round_count, game.rounds.size.localized()),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -241,11 +283,12 @@ private fun GameContent(
                     )
                 }
             } else {
-                item(key = "round_columns") { RoundColumnLabels(firstName, secondName, game.isActive) }
+                item(key = "round_columns") { RoundColumnLabels(firstName, secondName, game.isEditable) }
                 items(game.rounds.asReversed(), key = HokmRound::id) { round ->
                     RoundRow(
                         round = round,
-                        editable = game.isActive,
+                        editable = game.isEditable,
+                        showPoints = game.scoresVisible,
                         enabled = !saving,
                         onEdit = {
                             selectedRoundId = round.id
@@ -264,6 +307,7 @@ private fun GameContent(
                 AnnouncementSheet(
                     round = nextRound,
                     trickCount = trickCount,
+                    minimumAnnouncement = draft?.minimumAnnouncement ?: game.settings.minimumAnnouncement,
                     firstName = firstName,
                     secondName = secondName,
                     initial = draft?.announced,
@@ -287,6 +331,7 @@ private fun GameContent(
                 firstName = firstName,
                 secondName = secondName,
                 announced = draft.announced,
+                showPoints = game.scoresVisible,
                 saving = saving,
                 saveFailed = saveFailed,
                 onClose = ::close,
@@ -299,6 +344,7 @@ private fun GameContent(
                 trickCount = trickCount,
                 firstName = firstName,
                 secondName = secondName,
+                showPoints = game.scoresVisible,
                 saving = saving,
                 saveFailed = saveFailed,
                 onClose = ::close,
@@ -308,7 +354,7 @@ private fun GameContent(
                 },
             )
         }
-        GameOverlay.NewGame, GameOverlay.EditTeams -> {
+        GameOverlay.NewGame, GameOverlay.Settings -> {
             val creating = overlay == GameOverlay.NewGame
             val initial = if (creating) GameSettings(trickCount = trickCount) else game.settings
             GameSettingsSheet(
@@ -333,9 +379,18 @@ private fun GameContent(
             onClose = ::close,
             onConfirm = { viewModel.reset(game.id, ::close) },
         )
+        GameOverlay.Finish -> ConfirmGameChange(
+            title = stringResource(R.string.hokm_finish_game),
+            body = stringResource(if (draft == null) R.string.hokm_finish_body else R.string.hokm_finish_pending_body),
+            action = stringResource(R.string.hokm_finish_game),
+            saving = saving,
+            saveFailed = saveFailed,
+            onClose = ::close,
+            onConfirm = { viewModel.finishGame(game.id, ::close) },
+        )
         GameOverlay.DeleteRound -> if (selectedRound != null) {
             ConfirmGameChange(
-                title = stringResource(R.string.hokm_delete_round_title, selectedRound.number.persian()),
+                title = stringResource(R.string.hokm_delete_round_title, selectedRound.number.localized()),
                 body = stringResource(R.string.hokm_delete_round_body),
                 action = stringResource(R.string.hokm_delete_round),
                 saving = saving,
@@ -351,28 +406,35 @@ private fun GameContent(
         ) {
             HokmRulesBody()
         }
+        GameOverlay.Stats -> HokmSheet(
+            title = stringResource(R.string.hokm_stats),
+            saving = false,
+            onClose = ::close,
+        ) {
+            MatchStats(game, firstName, secondName)
+        }
         null -> Unit
     }
 }
 
 @Composable
-private fun ScoreBoard(game: HokmGame, firstName: String, secondName: String) {
+private fun ScoreBoard(game: HokmGame, firstName: String, secondName: String, enabled: Boolean, onVisibility: () -> Unit) {
+    val hero = LocalYarHero.current
     val firstPlayers = game.settings.firstTeam.playerNames()
     val secondPlayers = game.settings.secondTeam.playerNames()
     val showPlayers = firstPlayers.isNotEmpty() || secondPlayers.isNotEmpty()
-    val hasRounds = game.rounds.isNotEmpty()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(27.dp),
-        color = YarColors.forest,
-        contentColor = YarColors.onForest,
+        color = hero.background,
+        contentColor = hero.text,
     ) {
         Box {
             Canvas(Modifier.matchParentSize()) {
                 val pivot = Offset(size.width * 0.13f, size.height * 0.27f)
                 val stroke = Stroke(1.dp.toPx())
                 listOf(50.dp, 71.dp, 92.dp).forEach { radius ->
-                    drawCircle(YarColors.forestLine.copy(alpha = 0.55f), radius.toPx(), pivot, style = stroke)
+                    drawCircle(hero.line.copy(alpha = 0.55f), radius.toPx(), pivot, style = stroke)
                 }
             }
             Column(
@@ -384,21 +446,29 @@ private fun ScoreBoard(game: HokmGame, firstName: String, secondName: String) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        stringResource(R.string.hokm_total_score),
+                        stringResource(if (game.isFinished) R.string.hokm_final_score else R.string.hokm_total_score),
                         Modifier.weight(1f),
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Surface(
-                        color = YarColors.forestDeep,
-                        contentColor = YarColors.mutedOnForest,
-                        border = BorderStroke(1.dp, YarColors.forestLine),
+                        color = hero.deep,
+                        contentColor = hero.muted,
+                        border = BorderStroke(1.dp, hero.line),
                         shape = RoundedCornerShape(20.dp),
                     ) {
                         Text(
-                            stringResource(R.string.hokm_trick_pill, game.settings.trickCount.persian()),
+                            stringResource(R.string.hokm_trick_pill, game.settings.trickCount.localized()),
                             Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
                             style = MaterialTheme.typography.labelSmall,
                         )
+                    }
+                    if (!game.isFinished) {
+                        IconButton(onClick = onVisibility, enabled = enabled) {
+                            YarIcon(
+                                if (game.scoresVisible) YarSymbol.Eye else YarSymbol.EyeOff,
+                                stringResource(if (game.scoresVisible) R.string.hokm_hide_scores else R.string.hokm_show_scores),
+                            )
+                        }
                     }
                 }
                 Row(
@@ -407,27 +477,33 @@ private fun ScoreBoard(game: HokmGame, firstName: String, secondName: String) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TeamScore(
-                        firstName, firstPlayers, showPlayers, game.firstTotal, YarColors.lime,
+                        firstName, firstPlayers, showPlayers, game.firstTotal.takeIf { game.scoresVisible }, hero.firstAccent,
                         Modifier.weight(1f).testTag("first_total"),
                     )
-                    VerticalDivider(Modifier.height(62.dp), color = YarColors.forestLine)
+                    VerticalDivider(Modifier.height(62.dp), color = hero.line)
                     TeamScore(
-                        secondName, secondPlayers, showPlayers, game.secondTotal, YarColors.sand,
+                        secondName, secondPlayers, showPlayers, game.secondTotal.takeIf { game.scoresVisible }, hero.secondAccent,
                         Modifier.weight(1f).testTag("second_total"),
                     )
                 }
-                if (hasRounds) {
-                    val status = when {
-                        game.firstTotal > game.secondTotal -> stringResource(R.string.hokm_leader, firstName)
-                        game.secondTotal > game.firstTotal -> stringResource(R.string.hokm_leader, secondName)
-                        else -> stringResource(R.string.hokm_tied)
+                if (game.scoresVisible && (game.rounds.isNotEmpty() || game.isFinished)) {
+                    val leader = when (game.leader) {
+                        TeamSide.First -> firstName
+                        TeamSide.Second -> secondName
+                        null -> null
                     }
+                    val status = if (leader == null) stringResource(R.string.hokm_tied)
+                    else stringResource(if (game.isFinished) R.string.hokm_winner else R.string.hokm_leader, leader)
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        YarIcon(YarSymbol.Trophy, color = YarColors.sand, size = 16.dp)
-                        Text(status, color = YarColors.mutedOnForest, style = MaterialTheme.typography.bodySmall)
+                        YarIcon(YarSymbol.Trophy, color = hero.secondAccent, size = if (game.isFinished) 24.dp else 16.dp)
+                        Text(
+                            status,
+                            color = if (game.isFinished) hero.text else hero.muted,
+                            style = if (game.isFinished) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodySmall,
+                        )
                     }
                 }
             }
@@ -440,10 +516,11 @@ private fun TeamScore(
     name: String,
     players: String,
     showPlayers: Boolean,
-    total: Long,
+    total: Long?,
     accent: Color,
     modifier: Modifier = Modifier,
 ) {
+    val hero = LocalYarHero.current
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             name,
@@ -458,16 +535,17 @@ private fun TeamScore(
                 Text(
                     players,
                     style = MaterialTheme.typography.bodySmall,
-                    color = YarColors.mutedOnForest,
+                    color = hero.muted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
         Text(
-            total.persian(),
+            total?.localized() ?: "—",
             color = accent,
-            style = if (total < 100_000) MaterialTheme.typography.displayMedium else MaterialTheme.typography.headlineSmall,
+            style = if (total == null || total < 100_000) MaterialTheme.typography.displayMedium
+            else MaterialTheme.typography.headlineSmall,
             maxLines = 1,
         )
     }
@@ -479,44 +557,70 @@ private fun RoundActionCard(
     game: HokmGame,
     firstName: String,
     secondName: String,
+    forced: TeamNumbers?,
     enabled: Boolean,
     onOpen: () -> Unit,
     onFix: () -> Unit,
 ) {
     val draft = game.draft
+    val isForced = forced != null || draft?.isForced == true
+    val announced = draft?.announced ?: forced
+    val nextForced = game.settings.forcedRounds.nextFrom(if (draft == null) round else round + 1)
     YarPanel(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(11.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                YarTile(if (draft == null) YarSymbol.Plus else YarSymbol.Cards, size = 43.dp)
+                YarTile(if (isForced || draft != null) YarSymbol.Cards else YarSymbol.Plus, size = 43.dp)
                 Column(Modifier.weight(1f)) {
                     Text(
                         stringResource(
-                            if (draft == null) R.string.hokm_next_round else R.string.hokm_round_in_progress,
-                            round.persian(),
+                            when {
+                                isForced -> R.string.hokm_forced_number
+                                draft == null -> R.string.hokm_next_round
+                                else -> R.string.hokm_round_in_progress
+                            },
+                            round.localized(),
                         ),
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        stringResource(if (draft == null) R.string.hokm_next_body else R.string.hokm_in_progress_body),
+                        stringResource(when {
+                            draft != null -> R.string.hokm_in_progress_body
+                            isForced -> R.string.hokm_forced_body
+                            else -> R.string.hokm_next_body
+                        }),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            if (draft != null) {
-                AnnouncementSummary(firstName, secondName, draft.announced)
+            if (announced != null) {
+                AnnouncementSummary(firstName, secondName, announced)
+                if (HokmRules.hasGuaranteedMiss(announced, game.settings.trickCount)) {
+                    OverbidNotice(game.settings.trickCount)
+                }
+            }
+            if (!isForced && nextForced != null && nextForced > round) {
+                Text(
+                    stringResource(R.string.hokm_forced_countdown, nextForced.localized(), (nextForced - round).localized()),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
             YarPrimaryButton(
-                stringResource(if (draft == null) R.string.hokm_start_round else R.string.hokm_finish_round),
+                stringResource(when {
+                    draft != null -> R.string.hokm_finish_round
+                    isForced -> R.string.hokm_start_forced
+                    else -> R.string.hokm_start_round
+                }),
                 onClick = onOpen,
                 modifier = Modifier.fillMaxWidth(),
                 symbol = if (draft == null) YarSymbol.Plus else YarSymbol.Check,
                 enabled = enabled,
             )
-            if (draft != null) {
+            if (draft != null && !draft.isForced) {
                 TextButton(onClick = onFix, enabled = enabled, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                     Text(stringResource(R.string.hokm_fix_announcements))
                 }
@@ -553,7 +657,7 @@ private fun RoundColumnLabels(firstName: String, secondName: String, editable: B
 }
 
 @Composable
-private fun RoundRow(round: HokmRound, editable: Boolean, enabled: Boolean, onEdit: () -> Unit) {
+private fun RoundRow(round: HokmRound, editable: Boolean, showPoints: Boolean, enabled: Boolean, onEdit: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(15.dp)
     val border = BorderStroke(1.dp, colors.outlineVariant)
@@ -563,14 +667,19 @@ private fun RoundRow(round: HokmRound, editable: Boolean, enabled: Boolean, onEd
             horizontalArrangement = Arrangement.spacedBy(9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(Modifier.size(34.dp), shape = CircleShape, color = colors.surfaceContainerHigh) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(round.number.persian(), style = MaterialTheme.typography.labelMedium)
+            Surface(
+                Modifier.sizeIn(minWidth = 34.dp, minHeight = 34.dp),
+                shape = CircleShape,
+                color = if (round.isForced) colors.tertiaryContainer else colors.surfaceContainerHigh,
+            ) {
+                Box(Modifier.padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                    Text(round.number.localized(), style = MaterialTheme.typography.labelMedium)
                 }
             }
-            RoundTeam(round.points.first, round.announced.first, round.taken.first, colors.primary, Modifier.weight(1f))
+            RoundTeam(round.points.first.takeIf { showPoints }, round.announced.first, round.taken.first, colors.primary, Modifier.weight(1f))
             RoundTeam(
-                round.points.second, round.announced.second, round.taken.second, colors.tertiary, Modifier.weight(1f),
+                round.points.second.takeIf { showPoints }, round.announced.second, round.taken.second,
+                colors.tertiary, Modifier.weight(1f),
             )
             if (editable) YarIcon(YarSymbol.Next, color = colors.onSurfaceVariant, size = 17.dp)
         }
@@ -590,15 +699,17 @@ private fun RoundRow(round: HokmRound, editable: Boolean, enabled: Boolean, onEd
 }
 
 @Composable
-private fun RoundTeam(points: Int, announced: Int, taken: Int, accent: Color, modifier: Modifier = Modifier) {
+private fun RoundTeam(points: Int?, announced: Int, taken: Int, accent: Color, modifier: Modifier = Modifier) {
     Column(modifier) {
+        if (points != null) {
+            Text(
+                stringResource(R.string.hokm_points, points.localized()),
+                style = MaterialTheme.typography.titleSmall,
+                color = if (points == 0) MaterialTheme.colorScheme.onSurfaceVariant else accent,
+            )
+        }
         Text(
-            stringResource(R.string.hokm_points, points.persian()),
-            style = MaterialTheme.typography.titleSmall,
-            color = if (points == 0) MaterialTheme.colorScheme.onSurfaceVariant else accent,
-        )
-        Text(
-            stringResource(R.string.hokm_round_numbers, announced.persian(), taken.persian()),
+            stringResource(R.string.hokm_round_numbers, announced.localized(), taken.localized()),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

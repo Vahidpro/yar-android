@@ -19,6 +19,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -45,9 +46,10 @@ import io.github.vahidpro.yar.design.YarPrimaryButton
 import io.github.vahidpro.yar.design.YarSectionTitle
 import io.github.vahidpro.yar.design.YarSymbol
 import io.github.vahidpro.yar.design.asciiDigits
-import io.github.vahidpro.yar.design.persian
-import io.github.vahidpro.yar.design.persianDigits
+import io.github.vahidpro.yar.design.localized
+import io.github.vahidpro.yar.design.localizedDigits
 import io.github.vahidpro.yar.hokm.R
+import io.github.vahidpro.yar.hokm.domain.ForcedRounds
 import io.github.vahidpro.yar.hokm.domain.GameSettings
 import io.github.vahidpro.yar.hokm.domain.HokmRound
 import io.github.vahidpro.yar.hokm.domain.HokmRules
@@ -95,6 +97,7 @@ internal fun HokmSheet(
 internal fun AnnouncementSheet(
     round: Int,
     trickCount: Int,
+    minimumAnnouncement: Int,
     firstName: String,
     secondName: String,
     initial: TeamNumbers?,
@@ -106,13 +109,16 @@ internal fun AnnouncementSheet(
     var first by rememberSaveable { mutableStateOf(initial?.first?.toString().orEmpty()) }
     var second by rememberSaveable { mutableStateOf(initial?.second?.toString().orEmpty()) }
     val numbers = teamNumbers(first, second)
-    val valid = numbers != null && HokmRules.validAnnouncements(numbers, trickCount)
+    val valid = numbers != null && HokmRules.validAnnouncements(numbers, trickCount, minimumAnnouncement)
     HokmSheet(
-        title = stringResource(R.string.hokm_announce_title, round.persian()),
+        title = stringResource(R.string.hokm_announce_title, round.localized()),
         saving = saving,
         onClose = onClose,
     ) {
-        AnnouncementFields(firstName, secondName, first, second, trickCount, !saving, { first = it }, { second = it })
+        AnnouncementFields(
+            firstName, secondName, first, second, trickCount, minimumAnnouncement, !saving,
+            { first = it }, { second = it },
+        )
         if (saveFailed) SaveError()
         YarPrimaryButton(
             text = stringResource(if (initial == null) R.string.hokm_save_announcements else R.string.hokm_save_edits),
@@ -131,6 +137,7 @@ internal fun ResultSheet(
     firstName: String,
     secondName: String,
     announced: TeamNumbers,
+    showPoints: Boolean,
     saving: Boolean,
     saveFailed: Boolean,
     onClose: () -> Unit,
@@ -140,17 +147,17 @@ internal fun ResultSheet(
     var second by rememberSaveable { mutableStateOf("") }
     val numbers = teamNumbers(first, second)?.takeIf { HokmRules.validResult(it, trickCount) }
     HokmSheet(
-        title = stringResource(R.string.hokm_result_title, round.persian()),
+        title = stringResource(R.string.hokm_result_title, round.localized()),
         saving = saving,
         onClose = onClose,
     ) {
         AnnouncementSummary(firstName, secondName, announced)
         ResultFields(
             firstName, secondName, first, second, trickCount, !saving,
-            onFirst = { first = it; second = complement(it, trickCount) },
-            onSecond = { second = it; first = complement(it, trickCount) },
+            onFirst = { first = it },
+            onSecond = { second = it },
         )
-        if (numbers != null) PointsPreview(firstName, secondName, HokmRules.points(announced, numbers))
+        if (showPoints && numbers != null) PointsPreview(firstName, secondName, HokmRules.points(announced, numbers))
         if (saveFailed) SaveError()
         YarPrimaryButton(
             text = stringResource(R.string.hokm_save_result),
@@ -168,6 +175,7 @@ internal fun EditRoundSheet(
     trickCount: Int,
     firstName: String,
     secondName: String,
+    showPoints: Boolean,
     saving: Boolean,
     saveFailed: Boolean,
     onClose: () -> Unit,
@@ -178,25 +186,30 @@ internal fun EditRoundSheet(
     var secondAnnounced by rememberSaveable { mutableStateOf(round.announced.second.toString()) }
     var firstTaken by rememberSaveable { mutableStateOf(round.taken.first.toString()) }
     var secondTaken by rememberSaveable { mutableStateOf(round.taken.second.toString()) }
-    val announced = teamNumbers(firstAnnounced, secondAnnounced)
-        ?.takeIf { HokmRules.validAnnouncements(it, trickCount) }
+    val announced = if (round.isForced) round.announced else teamNumbers(firstAnnounced, secondAnnounced)
+        ?.takeIf { HokmRules.validAnnouncements(it, trickCount, round.minimumAnnouncement) }
     val taken = teamNumbers(firstTaken, secondTaken)?.takeIf { HokmRules.validResult(it, trickCount) }
     HokmSheet(
-        title = stringResource(R.string.hokm_edit_round, round.number.persian()),
+        title = stringResource(R.string.hokm_edit_round, round.number.localized()),
         saving = saving,
         onClose = onClose,
     ) {
-        AnnouncementFields(
-            firstName, secondName, firstAnnounced, secondAnnounced, trickCount, !saving,
-            { firstAnnounced = it }, { secondAnnounced = it },
-        )
+        if (round.isForced) {
+            Text(stringResource(R.string.hokm_forced_hand), style = MaterialTheme.typography.titleSmall)
+            AnnouncementSummary(firstName, secondName, round.announced)
+        } else {
+            AnnouncementFields(
+                firstName, secondName, firstAnnounced, secondAnnounced, trickCount, round.minimumAnnouncement,
+                !saving, { firstAnnounced = it }, { secondAnnounced = it },
+            )
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         ResultFields(
             firstName, secondName, firstTaken, secondTaken, trickCount, !saving,
-            onFirst = { firstTaken = it; secondTaken = complement(it, trickCount) },
-            onSecond = { secondTaken = it; firstTaken = complement(it, trickCount) },
+            onFirst = { firstTaken = it },
+            onSecond = { secondTaken = it },
         )
-        if (announced != null && taken != null) {
+        if (showPoints && announced != null && taken != null) {
             PointsPreview(firstName, secondName, HokmRules.points(announced, taken))
         }
         if (saveFailed) SaveError()
@@ -227,31 +240,36 @@ private fun AnnouncementFields(
     first: String,
     second: String,
     trickCount: Int,
+    minimumAnnouncement: Int,
     enabled: Boolean,
     onFirst: (String) -> Unit,
     onSecond: (String) -> Unit,
 ) {
-    val outOfRange = outsideRange(first, 0..trickCount) || outsideRange(second, 0..trickCount)
-    val tooLow = teamNumbers(first, second)?.let { it.sum < trickCount } == true
+    val range = minimumAnnouncement..trickCount
+    val outOfRange = outsideRange(first, range) || outsideRange(second, range)
+    val numbers = teamNumbers(first, second)
+    val tooLow = numbers?.let { it.sum < trickCount } == true
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Text(stringResource(R.string.hokm_announced_label), style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
             NumberField(
-                first, firstName, onFirst, enabled, outsideRange(first, 0..trickCount),
+                first, firstName, onFirst, enabled, outsideRange(first, range),
                 Modifier.weight(1f).testTag("first_bid"), imeAction = ImeAction.Next,
             )
             NumberField(
-                second, secondName, onSecond, enabled, outsideRange(second, 0..trickCount),
+                second, secondName, onSecond, enabled, outsideRange(second, range),
                 Modifier.weight(1f).testTag("second_bid"),
             )
         }
         FormHint(
-            text = stringResource(
-                if (outOfRange) R.string.hokm_number_range else R.string.hokm_minimum_announce,
-                trickCount.persian(),
-            ),
+            text = if (outOfRange) stringResource(
+                R.string.hokm_bid_range, minimumAnnouncement.localized(), trickCount.localized(),
+            ) else stringResource(R.string.hokm_minimum_announce, trickCount.localized()),
             isError = outOfRange || tooLow,
         )
+        if (!outOfRange && numbers != null && HokmRules.hasGuaranteedMiss(numbers, trickCount)) {
+            OverbidNotice(trickCount)
+        }
     }
 }
 
@@ -267,12 +285,13 @@ private fun ResultFields(
     onSecond: (String) -> Unit,
 ) {
     val outOfRange = outsideRange(first, 0..trickCount) || outsideRange(second, 0..trickCount)
+    val totalMismatch = teamNumbers(first, second)?.let { it.sum != trickCount } == true
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Text(stringResource(R.string.hokm_taken_label), style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
             NumberField(
                 first, firstName, onFirst, enabled, outsideRange(first, 0..trickCount),
-                Modifier.weight(1f).testTag("first_taken"),
+                Modifier.weight(1f).testTag("first_taken"), imeAction = ImeAction.Next,
             )
             NumberField(
                 second, secondName, onSecond, enabled, outsideRange(second, 0..trickCount),
@@ -280,9 +299,26 @@ private fun ResultFields(
             )
         }
         FormHint(
-            text = if (outOfRange) stringResource(R.string.hokm_number_range, trickCount.persian())
-            else stringResource(R.string.hokm_auto_complement),
-            isError = outOfRange,
+            text = if (outOfRange) stringResource(R.string.hokm_number_range, trickCount.localized())
+            else stringResource(R.string.hokm_result_total, trickCount.localized()),
+            isError = outOfRange || totalMismatch,
+        )
+    }
+}
+
+@Composable
+internal fun OverbidNotice(trickCount: Int) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = colors.tertiaryContainer,
+        contentColor = colors.onTertiaryContainer,
+    ) {
+        Text(
+            stringResource(R.string.hokm_overbid_note, trickCount.localized()),
+            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
         )
     }
 }
@@ -291,8 +327,8 @@ private fun ResultFields(
 internal fun AnnouncementSummary(firstName: String, secondName: String, numbers: TeamNumbers) {
     TeamNumberStrip(
         firstName, secondName,
-        stringResource(R.string.hokm_announced_number, numbers.first.persian()),
-        stringResource(R.string.hokm_announced_number, numbers.second.persian()),
+        stringResource(R.string.hokm_announced_number, numbers.first.localized()),
+        stringResource(R.string.hokm_announced_number, numbers.second.localized()),
     )
 }
 
@@ -300,8 +336,8 @@ internal fun AnnouncementSummary(firstName: String, secondName: String, numbers:
 private fun PointsPreview(firstName: String, secondName: String, numbers: TeamNumbers) {
     TeamNumberStrip(
         firstName, secondName,
-        stringResource(R.string.hokm_points, numbers.first.persian()),
-        stringResource(R.string.hokm_points, numbers.second.persian()),
+        stringResource(R.string.hokm_points, numbers.first.localized()),
+        stringResource(R.string.hokm_points, numbers.second.localized()),
     )
 }
 
@@ -357,10 +393,29 @@ internal fun GameSettingsSheet(
     var secondPlayerA by rememberSaveable { mutableStateOf(initial.secondTeam.firstPlayer) }
     var secondPlayerB by rememberSaveable { mutableStateOf(initial.secondTeam.secondPlayer) }
     var trickText by rememberSaveable { mutableStateOf(initial.trickCount.toString()) }
+    var minimumText by rememberSaveable { mutableStateOf(initial.minimumAnnouncement.toString()) }
+    var intervalText by rememberSaveable { mutableStateOf(initial.forcedRounds.interval.toString()) }
+    var forcedFirst by rememberSaveable { mutableStateOf(initial.forcedRounds.announced.first.toString()) }
+    var forcedSecond by rememberSaveable { mutableStateOf(initial.forcedRounds.announced.second.toString()) }
+    var showScores by rememberSaveable { mutableStateOf(initial.showScores) }
     val trickCount = trickText.toIntOrNull()?.takeIf { it in HokmRules.allowedTrickCounts }
+    val minimum = minimumText.toIntOrNull()
+    val interval = intervalText.toIntOrNull()
+    val forced = teamNumbers(forcedFirst, forcedSecond)
+    val validRange = if (trickCount != null && minimum != null) minimum..trickCount else null
+    val settings = if (trickCount != null && minimum != null && interval != null && (interval == 0 || forced != null)) {
+        GameSettings(
+            firstTeam = Team(firstName, firstPlayerA, firstPlayerB),
+            secondTeam = Team(secondName, secondPlayerA, secondPlayerB),
+            trickCount = trickCount,
+            minimumAnnouncement = minimum,
+            forcedRounds = ForcedRounds(interval, forced ?: initial.forcedRounds.announced),
+            showScores = showScores,
+        ).takeIf(GameSettings::hasValidRules)
+    } else null
 
     HokmSheet(
-        title = stringResource(if (creating) R.string.hokm_new_game else R.string.hokm_edit_teams),
+        title = stringResource(if (creating) R.string.hokm_new_game else R.string.hokm_game_settings),
         saving = saving,
         onClose = onClose,
     ) {
@@ -377,7 +432,18 @@ internal fun GameSettingsSheet(
         NumberField(
             value = trickText,
             label = stringResource(R.string.hokm_tricks_per_round),
-            onChange = { trickText = it },
+            onChange = { value ->
+                val previous = trickCount
+                val next = value.toIntOrNull()
+                if (previous != null && next != null && next in HokmRules.allowedTrickCounts) {
+                    val priorDefault = minOf(7, previous).toString()
+                    if (forcedFirst == priorDefault && forcedSecond == priorDefault) {
+                        forcedFirst = minOf(7, next).toString()
+                        forcedSecond = forcedFirst
+                    }
+                }
+                trickText = value
+            },
             enabled = !saving && !trickCountLocked,
             isError = outsideRange(trickText, HokmRules.allowedTrickCounts),
             modifier = Modifier.fillMaxWidth().testTag("tricks_per_round"),
@@ -388,21 +454,68 @@ internal fun GameSettingsSheet(
                 FormHint(stringResource(R.string.hokm_trick_count_locked))
             }
         }
+        NumberField(
+            value = minimumText,
+            label = stringResource(R.string.hokm_minimum_bid_setting),
+            onChange = { minimumText = it },
+            enabled = !saving,
+            isError = trickCount != null && outsideRange(minimumText, 0..trickCount),
+            modifier = Modifier.fillMaxWidth().testTag("minimum_bid"),
+        )
+        if (trickCount != null && outsideRange(minimumText, 0..trickCount)) {
+            FormHint(stringResource(R.string.hokm_number_range, trickCount.localized()), isError = true)
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Text(stringResource(R.string.hokm_forced_hand), style = MaterialTheme.typography.titleMedium)
+        NumberField(
+            value = intervalText,
+            label = stringResource(R.string.hokm_interval_setting),
+            onChange = { intervalText = it },
+            enabled = !saving,
+            isError = outsideRange(intervalText, 0..Int.MAX_VALUE),
+            modifier = Modifier.fillMaxWidth().testTag("forced_interval"),
+            maxDigits = 10,
+        )
+        FormHint(stringResource(R.string.hokm_interval_hint))
+        if (interval != null && interval > 0) {
+            Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                NumberField(
+                    forcedFirst, Team(firstName).displayName(first = true), { forcedFirst = it }, !saving,
+                    validRange != null && outsideRange(forcedFirst, validRange),
+                    Modifier.weight(1f).testTag("first_forced_bid"), imeAction = ImeAction.Next,
+                )
+                NumberField(
+                    forcedSecond, Team(secondName).displayName(first = false), { forcedSecond = it }, !saving,
+                    validRange != null && outsideRange(forcedSecond, validRange),
+                    Modifier.weight(1f).testTag("second_forced_bid"),
+                )
+            }
+            if (validRange != null && !validRange.isEmpty()) {
+                val invalidForced = outsideRange(forcedFirst, validRange) || outsideRange(forcedSecond, validRange)
+                FormHint(
+                    stringResource(R.string.hokm_bid_range, validRange.first.localized(), validRange.last.localized()),
+                    isError = invalidForced,
+                )
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.hokm_show_scores),
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Switch(checked = showScores, onCheckedChange = { showScores = it }, enabled = !saving)
+        }
         if (saveFailed) SaveError()
         YarPrimaryButton(
             text = stringResource(if (creating) R.string.hokm_create_game else R.string.hokm_save_edits),
             onClick = {
-                if (trickCount != null) {
-                    onSubmit(GameSettings(
-                        firstTeam = Team(firstName, firstPlayerA, firstPlayerB),
-                        secondTeam = Team(secondName, secondPlayerA, secondPlayerB),
-                        trickCount = trickCount,
-                    ))
-                }
+                if (settings != null) onSubmit(settings)
             },
             modifier = Modifier.fillMaxWidth(),
             symbol = if (creating) YarSymbol.Plus else YarSymbol.Check,
-            enabled = trickCount != null && !saving,
+            enabled = settings != null && !saving,
         )
     }
 }
@@ -457,12 +570,13 @@ private fun NumberField(
     isError: Boolean,
     modifier: Modifier,
     imeAction: ImeAction = ImeAction.Done,
+    maxDigits: Int = 2,
 ) {
     OutlinedTextField(
-        value = value.persianDigits(),
+        value = value.localizedDigits(),
         onValueChange = { input ->
             val ascii = input.asciiDigits()
-            if (ascii.length <= 2 && ascii.all { it in '0'..'9' }) onChange(ascii)
+            if (ascii.length <= maxDigits && ascii.all { it in '0'..'9' }) onChange(ascii)
         },
         modifier = modifier,
         label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -501,7 +615,4 @@ private fun teamNumbers(first: String, second: String): TeamNumbers? {
 }
 
 private fun outsideRange(value: String, range: IntRange): Boolean =
-    value.toIntOrNull()?.let { it !in range } == true
-
-private fun complement(value: String, trickCount: Int): String =
-    value.toIntOrNull()?.takeIf { it in 0..trickCount }?.let { (trickCount - it).toString() }.orEmpty()
+    value.isNotEmpty() && value.toIntOrNull()?.let { it in range } != true

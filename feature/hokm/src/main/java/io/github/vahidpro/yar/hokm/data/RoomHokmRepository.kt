@@ -31,6 +31,7 @@ internal class RoomHokmRepository(private val database: HokmDatabase) : HokmRepo
 
     override suspend fun activateGame(gameId: Long): Unit = database.withTransaction {
         val target = checkNotNull(dao.game(gameId))
+        check(target.finishedAt == null)
         if (target.activeKey == null) {
             archiveActiveGame()
             dao.updateGame(target.copy(activeKey = 1))
@@ -39,7 +40,7 @@ internal class RoomHokmRepository(private val database: HokmDatabase) : HokmRepo
 
     override suspend fun updateSettings(gameId: Long, settings: GameSettings) =
         database.withTransaction {
-            val game = requireActiveGame(gameId)
+            val game = requireEditableGame(gameId)
             val clean = settings.validated()
             if (clean.trickCount != game.trickCount) {
                 check(!hasProgress(gameId))
@@ -49,35 +50,63 @@ internal class RoomHokmRepository(private val database: HokmDatabase) : HokmRepo
                     trickCount = clean.trickCount,
                     firstTeam = clean.firstTeam,
                     secondTeam = clean.secondTeam,
+                    minimumAnnouncement = clean.minimumAnnouncement,
+                    forcedInterval = clean.forcedRounds.interval,
+                    firstForcedAnnouncement = clean.forcedRounds.announced.first,
+                    secondForcedAnnouncement = clean.forcedRounds.announced.second,
+                    showScores = clean.showScores,
                 ),
             )
         }
 
+    override suspend fun setScoresVisible(gameId: Long, visible: Boolean) =
+        database.withTransaction {
+            val game = checkNotNull(dao.game(gameId))
+            check(game.finishedAt == null)
+            dao.updateGame(game.copy(showScores = visible))
+        }
+
+    override suspend fun finishGame(gameId: Long) =
+        database.withTransaction {
+            val game = requireEditableGame(gameId)
+            dao.deleteDraft(gameId)
+            dao.updateGame(game.copy(finishedAt = System.currentTimeMillis()))
+        }
+
     override suspend fun startRound(gameId: Long, announced: TeamNumbers) =
         database.withTransaction {
-            val game = requireActiveGame(gameId)
-            require(HokmRules.validAnnouncements(announced, game.trickCount))
+            val game = requireEditableGame(gameId)
             check(dao.draft(gameId) == null)
+            val number = dao.lastRoundNumber(gameId) + 1
+            val forced = game.settings().forcedRounds.announcementsFor(number)
+            require(
+                if (forced != null) announced == forced
+                else HokmRules.validAnnouncements(announced, game.trickCount, game.minimumAnnouncement),
+            )
             dao.insertDraft(
                 DraftEntity(
                     gameId = gameId,
                     firstAnnounced = announced.first,
                     secondAnnounced = announced.second,
+                    roundNumber = number,
+                    minimumAnnouncement = game.minimumAnnouncement,
+                    isForced = forced != null,
                 ),
             )
         }
 
     override suspend fun updateDraft(gameId: Long, draftId: Long, announced: TeamNumbers) =
         database.withTransaction {
-            val game = requireActiveGame(gameId)
-            require(HokmRules.validAnnouncements(announced, game.trickCount))
+            val game = requireEditableGame(gameId)
             val draft = requireDraft(gameId, draftId)
+            check(!draft.isForced)
+            require(HokmRules.validAnnouncements(announced, game.trickCount, draft.minimumAnnouncement))
             dao.updateDraft(draft.copy(firstAnnounced = announced.first, secondAnnounced = announced.second))
         }
 
     override suspend fun finishRound(gameId: Long, draftId: Long, taken: TeamNumbers) =
         database.withTransaction {
-            val game = requireActiveGame(gameId)
+            val game = requireEditableGame(gameId)
             require(HokmRules.validResult(taken, game.trickCount))
             val draft = requireDraft(gameId, draftId)
             dao.insertRound(
@@ -87,6 +116,9 @@ internal class RoomHokmRepository(private val database: HokmDatabase) : HokmRepo
                     secondAnnounced = draft.secondAnnounced,
                     firstTaken = taken.first,
                     secondTaken = taken.second,
+                    roundNumber = draft.roundNumber,
+                    minimumAnnouncement = draft.minimumAnnouncement,
+                    isForced = draft.isForced,
                 ),
             )
             dao.deleteDraft(gameId)
@@ -98,10 +130,13 @@ internal class RoomHokmRepository(private val database: HokmDatabase) : HokmRepo
         announced: TeamNumbers,
         taken: TeamNumbers,
     ) = database.withTransaction {
-        val game = requireActiveGame(gameId)
-        require(HokmRules.validAnnouncements(announced, game.trickCount))
-        require(HokmRules.validResult(taken, game.trickCount))
+        val game = requireEditableGame(gameId)
         val round = checkNotNull(dao.round(gameId, roundId))
+        require(
+            if (round.isForced) announced == TeamNumbers(round.firstAnnounced, round.secondAnnounced)
+            else HokmRules.validAnnouncements(announced, game.trickCount, round.minimumAnnouncement),
+        )
+        require(HokmRules.validResult(taken, game.trickCount))
         dao.updateRound(
             round.copy(
                 firstAnnounced = announced.first,
@@ -113,18 +148,18 @@ internal class RoomHokmRepository(private val database: HokmDatabase) : HokmRepo
     }
 
     override suspend fun deleteRound(gameId: Long, roundId: Long) = database.withTransaction {
-        requireActiveGame(gameId)
+        requireEditableGame(gameId)
         check(dao.deleteRound(gameId, roundId) == 1)
     }
 
     override suspend fun resetGame(gameId: Long) = database.withTransaction {
-        requireActiveGame(gameId)
+        requireEditableGame(gameId)
         dao.deleteDraft(gameId)
         dao.deleteRounds(gameId)
     }
 
-    private suspend fun requireActiveGame(gameId: Long): GameEntity =
-        checkNotNull(dao.activeGame()).also { check(it.id == gameId) }
+    private suspend fun requireEditableGame(gameId: Long): GameEntity =
+        checkNotNull(dao.activeGame()).also { check(it.id == gameId && it.finishedAt == null) }
 
     private suspend fun requireDraft(gameId: Long, draftId: Long): DraftEntity =
         checkNotNull(dao.draft(gameId)).also { check(it.id == draftId) }
@@ -134,7 +169,7 @@ internal class RoomHokmRepository(private val database: HokmDatabase) : HokmRepo
 
     private suspend fun archiveActiveGame() {
         val active = dao.activeGame() ?: return
-        if (active.settings() == GameSettings() && !hasProgress(active.id)) {
+        if (active.finishedAt == null && active.settings().isDefault && !hasProgress(active.id)) {
             dao.deleteGame(active.id)
         } else {
             dao.updateGame(active.copy(activeKey = null))
@@ -144,7 +179,7 @@ internal class RoomHokmRepository(private val database: HokmDatabase) : HokmRepo
 
 private fun GameSettings.validated(): GameSettings {
     val clean = copy(firstTeam = firstTeam.trimmed(), secondTeam = secondTeam.trimmed())
-    require(clean.trickCount in HokmRules.allowedTrickCounts)
+    require(clean.hasValidRules())
     require(clean.firstTeam.hasValidNames() && clean.secondTeam.hasValidNames())
     return clean
 }
@@ -154,6 +189,11 @@ private fun GameSettings.toEntity() = GameEntity(
     trickCount = trickCount,
     firstTeam = firstTeam,
     secondTeam = secondTeam,
+    minimumAnnouncement = minimumAnnouncement,
+    forcedInterval = forcedRounds.interval,
+    firstForcedAnnouncement = forcedRounds.announced.first,
+    secondForcedAnnouncement = forcedRounds.announced.second,
+    showScores = showScores,
 )
 
 private fun GameBundle.toDomain() = HokmGame(
@@ -161,13 +201,21 @@ private fun GameBundle.toDomain() = HokmGame(
     createdAt = game.createdAt,
     isActive = game.activeKey != null,
     settings = game.settings(),
-    draft = draft?.let { RoundDraft(it.id, TeamNumbers(it.firstAnnounced, it.secondAnnounced)) },
-    rounds = rounds.sortedBy(RoundEntity::id).mapIndexed { index, round ->
-        HokmRound(
-            id = round.id,
-            number = index + 1,
-            announced = TeamNumbers(round.firstAnnounced, round.secondAnnounced),
-            taken = TeamNumbers(round.firstTaken, round.secondTaken),
+    draft = draft?.let {
+        RoundDraft(
+            it.id, TeamNumbers(it.firstAnnounced, it.secondAnnounced),
+            it.roundNumber, it.minimumAnnouncement, it.isForced,
         )
     },
+    rounds = rounds.sortedBy(RoundEntity::roundNumber).map { round ->
+        HokmRound(
+            id = round.id,
+            number = round.roundNumber,
+            announced = TeamNumbers(round.firstAnnounced, round.secondAnnounced),
+            taken = TeamNumbers(round.firstTaken, round.secondTaken),
+            minimumAnnouncement = round.minimumAnnouncement,
+            isForced = round.isForced,
+        )
+    },
+    finishedAt = game.finishedAt,
 )

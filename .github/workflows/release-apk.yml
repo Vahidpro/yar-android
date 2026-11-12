@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     outputs:
       filename: ${{ steps.apk.outputs.filename }}
@@ -44,9 +44,8 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - uses: android-actions/setup-android@v3
       - name: Install Android SDK
-        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+        run: bash .github/scripts/install-android-sdk.sh
       - name: Configure signing
         id: signing
         shell: bash
@@ -109,7 +108,7 @@ jobs:
   publish:
     if: github.event_name == 'push' && github.ref_type == 'tag' && needs.build.outputs.signed == 'true'
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write

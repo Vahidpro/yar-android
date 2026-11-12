@@ -8,11 +8,17 @@ object HokmRules {
     const val defaultTrickCount = 13
     val allowedTrickCounts = 1..99
 
-    fun validAnnouncements(announced: TeamNumbers, trickCount: Int): Boolean =
+    fun validAnnouncementValues(announced: TeamNumbers, trickCount: Int, minimum: Int): Boolean =
         trickCount in allowedTrickCounts &&
-            announced.first in 0..trickCount &&
-            announced.second in 0..trickCount &&
-            announced.sum >= trickCount
+            minimum in 0..trickCount &&
+            announced.first in minimum..trickCount &&
+            announced.second in minimum..trickCount
+
+    fun validAnnouncements(announced: TeamNumbers, trickCount: Int, minimum: Int = 0): Boolean =
+        validAnnouncementValues(announced, trickCount, minimum) && announced.sum >= trickCount
+
+    fun hasGuaranteedMiss(announced: TeamNumbers, trickCount: Int): Boolean =
+        announced.sum > trickCount
 
     fun validResult(taken: TeamNumbers, trickCount: Int): Boolean =
         trickCount in allowedTrickCounts &&

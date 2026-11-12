@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">یار</string>
+    <string name="app_preview_name">یار آزمایشی</string>
+    <string name="app_tagline">همراهانی لۏب ءِ ابزار</string>
+    <string name="tab_tools">ابزار</string>
+    <string name="tab_games">لۏب</string>
+    <string name="tab_settings">بندوبست</string>
+    <string name="hokm_category">حکم</string>
+    <string name="hokm_hero_title">امتیاز شماروک</string>
+    <string name="hokm_hero_body">هر دست ءِ پیش اعلان بنبیس ءُ لۏب ءَ امتیازاں بچار.</string>
+    <string name="hokm_start">لۏب ءَ شروع کن</string>
+    <string name="hokm_resume">لۏب ءَ پیش ببر</string>
+    <string name="hokm_view_result">لۏب ءِ نتیجه ءَ بچار</string>
+    <string name="recent_games">پدسری لۏب</string>
+    <string name="all_games">درست لۏب</string>
+    <string name="rules_link_title">امتیاز ءِ راهنما</string>
+    <string name="rules_link_body">اعلان ءَ تا دست ءِ آخری امتیاز</string>
+    <string name="saved_games_heading">نگهدارگ بوتگیں لۏب</string>
+    <string name="history_empty_title">هنوز لۏبی نگهدارگ نبوته</string>
+    <string name="history_empty_body">تیمان ءِ نام نبیسگ یا اوّلی دست ءِ شروع ءَ پد، لۏب ادا دیست بیت.</string>
+    <string name="new_game">نوکیں لۏب</string>
+    <string name="history_hokm">حکم</string>
+    <string name="history_date_rounds">%1$s · %2$s دست</string>
+    <string name="active_game">روانیں لۏب</string>
+    <string name="finished_game">تمام بوتگ</string>
+    <string name="games_load_error">نگهدارگ بوتگیں لۏب پچ نبوته.</string>
+    <string name="try_again">پدّا جهد کن</string>
+    <string name="appearance_heading">برنامه ءِ شکل</string>
+    <string name="theme_system">گوشی ءِ پئیرا</string>
+    <string name="theme_light">رۏشن</string>
+    <string name="theme_dark">تاریک</string>
+    <string name="theme_save_error">بندوبست نگهدارگ نبوته. پدّا جهد کن.</string>
+    <string name="palette_heading">رنگ ءِ تم</string>
+    <string name="palette_forest">جنگل</string>
+    <string name="palette_ocean">دریا</string>
+    <string name="palette_plum">بنفش</string>
+    <string name="language_heading">برنامه ءِ زبان</string>
+    <string name="about_heading">یار ءِ بابت ءَ</string>
+    <string name="app_version">یار، نسخهٔ %1$s</string>
+    <string name="local_storage">تیم، دست ءُ امتیاز همے گوشی ءَ نگهدارگ بنت. بی‌اینترنت لۏب کن.</string>
+</resources>

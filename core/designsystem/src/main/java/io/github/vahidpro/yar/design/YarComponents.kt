@@ -96,15 +96,16 @@ fun YarPrimaryButton(
     modifier: Modifier = Modifier,
     symbol: YarSymbol? = null,
     enabled: Boolean = true,
-    onForest: Boolean = false,
+    onHero: Boolean = false,
 ) {
+    val hero = LocalYarHero.current
     Button(
         onClick = onClick,
         modifier = modifier.defaultMinSize(minHeight = 53.dp),
         enabled = enabled,
         shape = RoundedCornerShape(15.dp),
-        colors = if (onForest) {
-            ButtonDefaults.buttonColors(containerColor = YarColors.lime, contentColor = YarColors.forestDeep)
+        colors = if (onHero) {
+            ButtonDefaults.buttonColors(containerColor = hero.firstAccent, contentColor = hero.deep)
         } else ButtonDefaults.buttonColors(),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

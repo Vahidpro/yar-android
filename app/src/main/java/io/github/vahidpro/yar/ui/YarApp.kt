@@ -41,7 +41,7 @@ import io.github.vahidpro.yar.design.YarSymbol
 import io.github.vahidpro.yar.hokm.ui.HokmRulesScreen
 import io.github.vahidpro.yar.hokm.ui.HokmScoreScreen
 import io.github.vahidpro.yar.hokm.ui.HokmViewModel
-import io.github.vahidpro.yar.settings.AppearanceMode
+import io.github.vahidpro.yar.settings.AppPreferences
 import io.github.vahidpro.yar.settings.AppearanceViewModel
 
 private enum class MainTab(val route: String, @param:StringRes val label: Int, val icon: YarSymbol) {
@@ -55,7 +55,7 @@ private const val savedGame = "hokm/saved"
 private const val hokmRules = "hokm/rules"
 
 @Composable
-fun YarApp(hokm: HokmViewModel, appearance: AppearanceViewModel, mode: AppearanceMode) {
+fun YarApp(hokm: HokmViewModel, appearance: AppearanceViewModel, preferences: AppPreferences) {
     val nav = rememberNavController()
     val backStackEntry by nav.currentBackStackEntryAsState()
     val currentTab = MainTab.entries.firstOrNull { it.route == backStackEntry?.destination?.route }
@@ -121,7 +121,12 @@ fun YarApp(hokm: HokmViewModel, appearance: AppearanceViewModel, mode: Appearanc
                 composable(MainTab.Settings.route) {
                     Column {
                         YarScreenBar(stringResource(R.string.tab_settings))
-                        AppearanceScreen(mode = mode, onSelect = appearance::select)
+                        AppearanceScreen(
+                            preferences = preferences,
+                            onSelectMode = appearance::select,
+                            onSelectPalette = appearance::selectPalette,
+                            onSelectLanguage = appearance::selectLanguage,
+                        )
                     }
                 }
                 composable(

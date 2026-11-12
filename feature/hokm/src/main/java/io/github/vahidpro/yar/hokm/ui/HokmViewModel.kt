@@ -62,6 +62,12 @@ class HokmViewModel(private val repository: HokmRepository) : ViewModel() {
     fun updateSettings(gameId: Long, settings: GameSettings, onSaved: () -> Unit) =
         mutate({ onSaved() }) { repository.updateSettings(gameId, settings) }
 
+    fun setScoresVisible(gameId: Long, visible: Boolean) =
+        mutate({}) { repository.setScoresVisible(gameId, visible) }
+
+    fun finishGame(gameId: Long, onSaved: () -> Unit) =
+        mutate({ onSaved() }) { repository.finishGame(gameId) }
+
     fun startRound(gameId: Long, announced: TeamNumbers, onSaved: () -> Unit) =
         mutate({ onSaved() }) { repository.startRound(gameId, announced) }
 

@@ -3,11 +3,13 @@ package io.github.vahidpro.yar.hokm.data
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.vahidpro.yar.hokm.domain.ForcedRounds
 import io.github.vahidpro.yar.hokm.domain.GameSettings
 import io.github.vahidpro.yar.hokm.domain.HokmGame
 import io.github.vahidpro.yar.hokm.domain.HokmRepository
 import io.github.vahidpro.yar.hokm.domain.Team
 import io.github.vahidpro.yar.hokm.domain.TeamNumbers
+import io.github.vahidpro.yar.hokm.domain.TeamSide
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
@@ -105,7 +107,41 @@ class HokmRepositoryTest {
         }
     }
 
-    private fun openDatabase(name: String) = Room.databaseBuilder(context, HokmDatabase::class.java, name).build()
+    @Test
+    fun forcedHandsKeepTheirBidsWhenSettingsChangeAndFinishingPreservesTheResult() = runBlocking {
+        memoryDatabase().useDatabase { database ->
+            val repository = RoomHokmRepository(database)
+            val options = GameSettings(minimumAnnouncement = 5, forcedRounds = ForcedRounds(2, TeamNumbers(9, 5)))
+            val id = repository.newGame(options)
+            assertTrue(runCatching { repository.startRound(id, TeamNumbers(9, 4)) }.isFailure)
+            repository.startRound(id, TeamNumbers(7, 6))
+            repository.finishRound(id, requireNotNull(repository.activeGame().draft).id, TeamNumbers(7, 6))
+
+            assertTrue(runCatching { repository.startRound(id, TeamNumbers(7, 6)) }.isFailure)
+            repository.startRound(id, TeamNumbers(9, 5))
+            val draft = requireNotNull(repository.activeGame().draft)
+            assertEquals(2, draft.number)
+            assertTrue(draft.isForced)
+            repository.updateSettings(id, options.copy(forcedRounds = ForcedRounds(7, TeamNumbers(7, 7))))
+            assertTrue(runCatching { repository.updateDraft(id, draft.id, TeamNumbers(7, 7)) }.isFailure)
+            repository.finishRound(id, draft.id, TeamNumbers(8, 5))
+            assertEquals(TeamNumbers(9, 5), repository.activeGame().rounds.last().announced)
+
+            repository.setScoresVisible(id, false)
+            assertFalse(repository.activeGame().scoresVisible)
+            repository.finishGame(id)
+            val finished = repository.activeGame()
+            assertTrue(finished.isFinished)
+            assertTrue(finished.scoresVisible)
+            assertEquals(7L, finished.firstTotal)
+            assertEquals(11L, finished.secondTotal)
+            assertEquals(TeamSide.Second, finished.leader)
+            assertTrue(runCatching { repository.startRound(id, TeamNumbers(7, 6)) }.isFailure)
+        }
+    }
+
+    private fun openDatabase(name: String) = Room.databaseBuilder(context, HokmDatabase::class.java, name)
+        .addMigrations(MIGRATION_1_2).build()
 
     private fun memoryDatabase() = Room.inMemoryDatabaseBuilder(context, HokmDatabase::class.java).build()
 

@@ -2,6 +2,7 @@ package io.github.vahidpro.yar.hokm.data
 
 import android.content.Context
 import androidx.room.Dao
+import androidx.room.ColumnInfo
 import androidx.room.Database
 import androidx.room.Embedded
 import androidx.room.Entity
@@ -16,8 +17,10 @@ import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Update
 import io.github.vahidpro.yar.hokm.domain.GameSettings
+import io.github.vahidpro.yar.hokm.domain.ForcedRounds
 import io.github.vahidpro.yar.hokm.domain.HokmRepository
 import io.github.vahidpro.yar.hokm.domain.Team
+import io.github.vahidpro.yar.hokm.domain.TeamNumbers
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "games", indices = [Index(value = ["activeKey"], unique = true)])
@@ -29,8 +32,18 @@ internal data class GameEntity(
     val trickCount: Int,
     @Embedded(prefix = "first_") val firstTeam: Team,
     @Embedded(prefix = "second_") val secondTeam: Team,
+    @ColumnInfo(defaultValue = "0") val minimumAnnouncement: Int,
+    @ColumnInfo(defaultValue = "0") val forcedInterval: Int,
+    @ColumnInfo(defaultValue = "7") val firstForcedAnnouncement: Int,
+    @ColumnInfo(defaultValue = "7") val secondForcedAnnouncement: Int,
+    @ColumnInfo(defaultValue = "1") val showScores: Boolean,
+    val finishedAt: Long? = null,
 ) {
-    fun settings() = GameSettings(firstTeam, secondTeam, trickCount)
+    fun settings() = GameSettings(
+        firstTeam, secondTeam, trickCount, minimumAnnouncement,
+        ForcedRounds(forcedInterval, TeamNumbers(firstForcedAnnouncement, secondForcedAnnouncement)),
+        showScores,
+    )
 }
 
 @Entity(
@@ -48,6 +61,9 @@ internal data class DraftEntity(
     val gameId: Long,
     val firstAnnounced: Int,
     val secondAnnounced: Int,
+    @ColumnInfo(defaultValue = "0") val roundNumber: Int,
+    @ColumnInfo(defaultValue = "0") val minimumAnnouncement: Int,
+    @ColumnInfo(defaultValue = "0") val isForced: Boolean,
 )
 
 @Entity(
@@ -58,7 +74,7 @@ internal data class DraftEntity(
         childColumns = ["gameId"],
         onDelete = ForeignKey.CASCADE,
     )],
-    indices = [Index(value = ["gameId"])],
+    indices = [Index(value = ["gameId", "roundNumber"], unique = true)],
 )
 internal data class RoundEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -67,6 +83,9 @@ internal data class RoundEntity(
     val secondAnnounced: Int,
     val firstTaken: Int,
     val secondTaken: Int,
+    @ColumnInfo(defaultValue = "0") val roundNumber: Int,
+    @ColumnInfo(defaultValue = "0") val minimumAnnouncement: Int,
+    @ColumnInfo(defaultValue = "0") val isForced: Boolean,
 )
 
 internal data class GameBundle(
@@ -111,6 +130,9 @@ internal interface HokmDao {
     @Query("SELECT COUNT(*) FROM rounds WHERE gameId = :gameId")
     suspend fun roundCount(gameId: Long): Int
 
+    @Query("SELECT COALESCE(MAX(roundNumber), 0) FROM rounds WHERE gameId = :gameId")
+    suspend fun lastRoundNumber(gameId: Long): Int
+
     @Query("SELECT * FROM rounds WHERE gameId = :gameId AND id = :roundId")
     suspend fun round(gameId: Long, roundId: Long): RoundEntity?
 
@@ -127,7 +149,7 @@ internal interface HokmDao {
     suspend fun deleteRounds(gameId: Long)
 }
 
-@Database(entities = [GameEntity::class, DraftEntity::class, RoundEntity::class], version = 1)
+@Database(entities = [GameEntity::class, DraftEntity::class, RoundEntity::class], version = 2)
 internal abstract class HokmDatabase : RoomDatabase() {
     abstract fun dao(): HokmDao
 }
@@ -138,5 +160,5 @@ fun openHokmRepository(context: Context): HokmRepository =
             context.applicationContext,
             HokmDatabase::class.java,
             "yar-hokm.db",
-        ).build(),
+        ).addMigrations(MIGRATION_1_2).build(),
     )

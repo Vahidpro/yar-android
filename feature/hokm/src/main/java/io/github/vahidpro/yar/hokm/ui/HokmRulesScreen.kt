@@ -22,7 +22,7 @@ import io.github.vahidpro.yar.design.YarScreenBar
 import io.github.vahidpro.yar.design.YarSectionTitle
 import io.github.vahidpro.yar.design.YarSymbol
 import io.github.vahidpro.yar.design.YarTile
-import io.github.vahidpro.yar.design.persian
+import io.github.vahidpro.yar.design.localized
 import io.github.vahidpro.yar.hokm.R
 import io.github.vahidpro.yar.hokm.domain.HokmRules
 import io.github.vahidpro.yar.hokm.domain.TeamNumbers
@@ -46,7 +46,7 @@ internal fun HokmRulesBody() {
         RulesStep(YarSymbol.Cards, stringResource(R.string.hokm_rule_one_title), stringResource(R.string.hokm_rule_one))
         RulesStep(YarSymbol.Check, stringResource(R.string.hokm_rule_two_title), stringResource(R.string.hokm_rule_two))
         RulesStep(YarSymbol.Trophy, stringResource(R.string.hokm_rule_three_title), stringResource(R.string.hokm_rule_three))
-        YarSectionTitle(stringResource(R.string.hokm_rule_example_title, HokmRules.defaultTrickCount.persian()))
+        YarSectionTitle(stringResource(R.string.hokm_rule_example_title, HokmRules.defaultTrickCount.localized()))
         YarPanel(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 ExampleRow(
@@ -89,7 +89,7 @@ private fun ScoreExample(announced: TeamNumbers, taken: TeamNumbers) {
 
 @Composable
 private fun pairText(values: TeamNumbers) =
-    stringResource(R.string.hokm_example_pair, values.first.persian(), values.second.persian())
+    stringResource(R.string.hokm_example_pair, values.first.localized(), values.second.localized())
 
 @Composable
 private fun ExampleRow(announced: String, taken: String, score: String, header: Boolean = false) {

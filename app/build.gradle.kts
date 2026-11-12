@@ -12,6 +12,7 @@ val signingVariables = listOf(
     "YAR_SIGNING_KEY_ALIAS",
     "YAR_SIGNING_KEY_PASSWORD",
 )
+val previewBuild = providers.gradleProperty("yarPreview").map { it == "true" }.orElse(false)
 val releaseCredentials = signingVariables.associateWith { providers.environmentVariable(it).orNull }
 val hasReleaseCredentials = releaseCredentials.values.any { !it.isNullOrBlank() }
 require(!hasReleaseCredentials || releaseCredentials.values.all { !it.isNullOrBlank() }) {
@@ -26,8 +27,9 @@ android {
         applicationId = "io.github.vahidpro.yar"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
+        manifestPlaceholders["yarAppLabel"] = "@string/app_name"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -42,8 +44,9 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
+            applicationIdSuffix = if (previewBuild.get()) ".preview" else ".debug"
+            versionNameSuffix = if (previewBuild.get()) "-preview" else "-debug"
+            if (previewBuild.get()) manifestPlaceholders["yarAppLabel"] = "@string/app_preview_name"
         }
         release {
             isMinifyEnabled = true
@@ -56,6 +59,12 @@ android {
     buildFeatures {
         buildConfig = true
         compose = true
+    }
+
+    bundle {
+        language {
+            enableSplit = false
+        }
     }
 
     compileOptions {

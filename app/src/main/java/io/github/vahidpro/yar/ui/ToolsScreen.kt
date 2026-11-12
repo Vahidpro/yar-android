@@ -31,7 +31,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.vahidpro.yar.R
-import io.github.vahidpro.yar.design.YarColors
+import io.github.vahidpro.yar.design.LocalYarHero
+import io.github.vahidpro.yar.design.LocalYarLanguage
 import io.github.vahidpro.yar.design.YarIcon
 import io.github.vahidpro.yar.design.YarPrimaryButton
 import io.github.vahidpro.yar.design.YarSectionTitle
@@ -49,14 +50,16 @@ fun ToolsScreen(
     onOpenHistory: () -> Unit,
 ) {
     val ready = state as? HokmGamesState.Ready
-    val recent = ready?.games?.firstOrNull { it.hasProgress }
+    val recent = ready?.games?.firstOrNull { it.hasProgress || it.isFinished }
+    val hero = LocalYarHero.current
+    val active = ready?.active
     Column(
         Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
             .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 22.dp),
         verticalArrangement = Arrangement.spacedBy(17.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            YarTile(YarSymbol.Spade, size = 53.dp, color = YarColors.forest, contentColor = YarColors.lime)
+            YarTile(YarSymbol.Spade, size = 53.dp, color = hero.background, contentColor = hero.firstAccent)
             Column {
                 Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
                 Text(
@@ -68,7 +71,12 @@ fun ToolsScreen(
         }
         Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
             YarSectionTitle(stringResource(R.string.hokm_category))
-            HokmHero(resume = ready?.active?.hasProgress == true, onOpen = onOpenHokm)
+            val action = when {
+                active?.isFinished == true -> R.string.hokm_view_result
+                active?.hasProgress == true -> R.string.hokm_resume
+                else -> R.string.hokm_start
+            }
+            HokmHero(action, onOpen = onOpenHokm)
         }
         if (recent != null) {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -84,12 +92,14 @@ fun ToolsScreen(
 }
 
 @Composable
-private fun HokmHero(resume: Boolean, onOpen: () -> Unit) {
+private fun HokmHero(action: Int, onOpen: () -> Unit) {
+    val hero = LocalYarHero.current
+    val language = LocalYarLanguage.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
-        color = YarColors.forest,
-        contentColor = YarColors.onForest,
+        color = hero.background,
+        contentColor = hero.text,
     ) {
         BoxWithConstraints {
             val showArt = maxWidth >= 302.dp && LocalDensity.current.fontScale <= 1.3f
@@ -103,22 +113,22 @@ private fun HokmHero(resume: Boolean, onOpen: () -> Unit) {
                 ) {
                     Text(
                         stringResource(R.string.hokm_hero_title),
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = YarColors.onForest,
+                        style = if (language.rtl) MaterialTheme.typography.headlineLarge else MaterialTheme.typography.headlineMedium,
+                        color = hero.text,
                     )
                     Text(
                         stringResource(R.string.hokm_hero_body),
                         style = MaterialTheme.typography.bodySmall,
-                        color = YarColors.mutedOnForest,
+                        color = hero.muted,
                     )
                 }
                 Spacer(Modifier.height(3.dp))
                 YarPrimaryButton(
-                    text = stringResource(if (resume) R.string.hokm_resume else R.string.hokm_start),
+                    text = stringResource(action),
                     onClick = onOpen,
                     modifier = Modifier.fillMaxWidth(),
-                    symbol = if (resume) YarSymbol.Next else YarSymbol.Plus,
-                    onForest = true,
+                    symbol = if (action == R.string.hokm_start) YarSymbol.Plus else YarSymbol.Next,
+                    onHero = true,
                 )
             }
         }
@@ -127,25 +137,25 @@ private fun HokmHero(resume: Boolean, onOpen: () -> Unit) {
 
 @Composable
 private fun CardFan(modifier: Modifier = Modifier) {
+    val hero = LocalYarHero.current
     Canvas(modifier.fillMaxWidth()) {
         val unit = size.width / 149
         fun px(value: Int) = value * unit
         val cream = Color(0xFFFBF8DE)
-        val green = Color(0xFF87AE83)
-        val ink = YarColors.forestDeep
-        val line = YarColors.forestLine
+        val ink = hero.deep
+        val line = hero.line
         val orbit = Offset(px(65), px(81))
         drawCircle(line, px(58), orbit, style = Stroke(px(1)))
         drawCircle(line.copy(alpha = 0.7f), px(75), orbit, style = Stroke(px(1)))
-        drawCircle(YarColors.sand, px(2), Offset(px(111), px(30)))
-        drawCircle(YarColors.lime, px(2), Offset(px(19), px(117)))
+        drawCircle(hero.secondAccent, px(2), Offset(px(111), px(30)))
+        drawCircle(hero.firstAccent, px(2), Offset(px(19), px(117)))
 
         val cardSize = Size(px(62), px(92))
         val corner = CornerRadius(px(9))
         val back = Offset(px(54), px(35))
         rotate(17f, Offset(back.x + cardSize.width / 2, back.y + cardSize.height / 2)) {
             drawRoundRect(Color.Black.copy(alpha = 0.18f), back + Offset(px(1), px(5)), cardSize, corner)
-            drawRoundRect(green, back, cardSize, corner)
+            drawRoundRect(hero.cardBack, back, cardSize, corner)
             drawRoundRect(
                 ink.copy(alpha = 0.5f),
                 back + Offset(px(6), px(6)),

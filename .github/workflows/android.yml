@@ -5,25 +5,35 @@ on:
     branches:
       - '**'
   pull_request:
+  workflow_dispatch:
+    inputs:
+      preview:
+        description: Build a preview that installs alongside the debug app
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - uses: android-actions/setup-android@v3
       - name: Install Android SDK
-        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+        run: bash .github/scripts/install-android-sdk.sh
       - name: Test, lint, and assemble
-        run: ./gradlew :feature:hokm:testDebugUnitTest :app:lintDebug :app:assembleDebug
+        env:
+          YAR_PREVIEW: ${{ inputs.preview == true }}
+        run: ./gradlew -PyarPreview="$YAR_PREVIEW" :feature:hokm:testDebugUnitTest :app:lintDebug :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: Yar-debug-apk

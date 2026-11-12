@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 
 enum class YarSymbol {
     Spade, Cards, History, Settings, Back, Next, More, Plus, Edit,
-    Help, Reset, Check, Close, Sun, Moon, System, Trash, Trophy, Users, Lock,
+    Help, Reset, Check, Close, Sun, Moon, System, Trash, Trophy, Users, Lock, Eye, EyeOff, Chart, Share,
 }
 
 @Composable
@@ -190,6 +190,29 @@ private fun DrawScope.drawSymbol(symbol: YarSymbol, color: Color) {
             box(5f, 10f, 14f, 10f, 2f)
             path { moveTo(8f, 10f); lineTo(8f, 7f); cubicTo(8f, 2f, 16f, 2f, 16f, 7f); lineTo(16f, 10f) }
             circle(12f, 15f, 1f, true)
+        }
+        YarSymbol.Eye, YarSymbol.EyeOff -> {
+            path {
+                moveTo(2.5f, 12f)
+                cubicTo(7.5f, 4f, 16.5f, 4f, 21.5f, 12f)
+                cubicTo(16.5f, 20f, 7.5f, 20f, 2.5f, 12f)
+                close()
+            }
+            circle(12f, 12f, 2.7f)
+            if (symbol == YarSymbol.EyeOff) line(4f, 4f, 20f, 20f)
+        }
+        YarSymbol.Chart -> {
+            path { moveTo(4f, 4f); lineTo(4f, 20f); lineTo(21f, 20f) }
+            line(8.5f, 16f, 8.5f, 11f)
+            line(13.5f, 16f, 13.5f, 7f)
+            line(18.5f, 16f, 18.5f, 4f)
+        }
+        YarSymbol.Share -> {
+            line(8.5f, 11f, 15.5f, 7f)
+            line(8.5f, 13f, 15.5f, 17f)
+            circle(6f, 12f, 2.5f)
+            circle(18f, 5.5f, 2.5f)
+            circle(18f, 18.5f, 2.5f)
         }
     }
 }

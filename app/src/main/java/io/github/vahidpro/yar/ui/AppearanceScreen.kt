@@ -26,11 +26,19 @@ import io.github.vahidpro.yar.design.YarPanel
 import io.github.vahidpro.yar.design.YarSectionTitle
 import io.github.vahidpro.yar.design.YarSymbol
 import io.github.vahidpro.yar.design.YarTile
-import io.github.vahidpro.yar.design.persianDigits
+import io.github.vahidpro.yar.design.YarLanguage
+import io.github.vahidpro.yar.design.YarPalette
+import io.github.vahidpro.yar.design.localizedDigits
+import io.github.vahidpro.yar.settings.AppPreferences
 import io.github.vahidpro.yar.settings.AppearanceMode
 
 @Composable
-fun AppearanceScreen(mode: AppearanceMode, onSelect: (AppearanceMode) -> Unit) {
+fun AppearanceScreen(
+    preferences: AppPreferences,
+    onSelectMode: (AppearanceMode) -> Unit,
+    onSelectPalette: (YarPalette) -> Unit,
+    onSelectLanguage: (YarLanguage) -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     Column(
         Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
@@ -49,17 +57,41 @@ fun AppearanceScreen(mode: AppearanceMode, onSelect: (AppearanceMode) -> Unit) {
                         AppearanceMode.Light -> R.string.theme_light to YarSymbol.Sun
                         AppearanceMode.Dark -> R.string.theme_dark to YarSymbol.Moon
                     }
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = 64.dp)
-                            .selectable(selected = option == mode, role = Role.RadioButton, onClick = { onSelect(option) })
-                            .padding(horizontal = 13.dp, vertical = 9.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+                    SettingsOption(stringResource(label), option == preferences.mode, { onSelectMode(option) }) {
                         YarTile(icon, size = 40.dp)
-                        Text(stringResource(label), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                        RadioButton(selected = option == mode, onClick = null)
                     }
+                }
+            }
+        }
+        YarSectionTitle(stringResource(R.string.palette_heading))
+        YarPanel(Modifier.fillMaxWidth()) {
+            Column(Modifier.selectableGroup()) {
+                YarPalette.entries.forEachIndexed { index, palette ->
+                    if (index > 0) {
+                        HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = colors.outlineVariant)
+                    }
+                    val label = when (palette) {
+                        YarPalette.Forest -> R.string.palette_forest
+                        YarPalette.Ocean -> R.string.palette_ocean
+                        YarPalette.Plum -> R.string.palette_plum
+                    }
+                    SettingsOption(stringResource(label), palette == preferences.palette, { onSelectPalette(palette) }) {
+                        YarTile(
+                            YarSymbol.Spade, size = 40.dp,
+                            color = palette.hero.background, contentColor = palette.hero.firstAccent,
+                        )
+                    }
+                }
+            }
+        }
+        YarSectionTitle(stringResource(R.string.language_heading))
+        YarPanel(Modifier.fillMaxWidth()) {
+            Column(Modifier.selectableGroup()) {
+                YarLanguage.entries.forEachIndexed { index, language ->
+                    if (index > 0) {
+                        HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = colors.outlineVariant)
+                    }
+                    SettingsOption(language.nativeName, language == preferences.language, { onSelectLanguage(language) })
                 }
             }
         }
@@ -73,7 +105,7 @@ fun AppearanceScreen(mode: AppearanceMode, onSelect: (AppearanceMode) -> Unit) {
                 YarTile(YarSymbol.Spade)
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
-                        stringResource(R.string.app_version, BuildConfig.VERSION_NAME.substringBefore('-').persianDigits()),
+                        stringResource(R.string.app_version, BuildConfig.VERSION_NAME.substringBefore('-').localizedDigits()),
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
@@ -84,5 +116,25 @@ fun AppearanceScreen(mode: AppearanceMode, onSelect: (AppearanceMode) -> Unit) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SettingsOption(
+    label: String,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    leading: @Composable () -> Unit = {},
+) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 58.dp)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
+            .padding(horizontal = 13.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        leading()
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+        RadioButton(selected = selected, onClick = null)
     }
 }
